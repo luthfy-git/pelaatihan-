@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pantauan Pelatihan</title>
+<style>
+  body { font-family: sans-serif; margin: 0; background: #f4f6f8; color: #222; }
+  header { background: #1f6feb; color: #fff; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; }
+  main { padding: 16px; max-width: 700px; margin: auto; }
+  .kartu { background: #fff; border-radius: 10px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  button { background: #1f6feb; color: #fff; border: 0; border-radius: 8px; padding: 10px 14px; font-size: 15px; cursor: pointer; }
+  button.abu { background: #6b7280; }
+  button.merah { background: #d1242f; }
+  input, textarea, select { width: 100%; padding: 10px; margin: 6px 0 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 15px; box-sizing: border-box; }
+  .kecil { font-size: 13px; color: #555; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <strong id="judul">Pantauan Pelatihan</strong>
+  <button class="abu" id="tombolLogin">Login Admin</button>
+</header>
+<main>
+  <div id="viewLogin" class="hidden kartu">
+    <h3>Login Admin</h3>
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password">
+    <button id="kirimLogin">Masuk</button>
+    <button class="abu" id="batalLogin">Batal</button>
+    <p class="kecil" id="pesanLogin"></p>
+  </div>
+
+  <div id="viewDaftar">
+    <div id="formPeserta" class="kartu hidden">
+      <h3>Tambah Peserta</h3>
+      <input id="namaBaru" placeholder="Nama peserta">
+      <button id="simpanPeserta">Simpan</button>
+    </div>
+    <div id="daftar"></div>
+  </div>
+
+  <div id="viewDetail" class="hidden">
+    <button class="abu" id="kembali">Kembali</button>
+    <h2 id="namaPeserta"></h2>
+    <div id="formCatatan" class="kartu hidden">
+      <h3>Tambah Catatan</h3>
+      <input id="tgl" type="date">
+      <input id="tinggi" type="number" step="0.1" placeholder="Tinggi badan (cm)">
+      <input id="suhu" type="number" step="0.1" placeholder="Suhu (°C)">
+      <textarea id="kegiatan" rows="3" placeholder="Kegiatan latihan"></textarea>
+      <button id="simpanCatatan">Simpan Catatan</button>
+    </div>
+    <div id="daftarCatatan"></div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = “https://pecixkiphajouprodrqt.supabase.co/rest/v1/”;
+const SUPABASE_KEY =”sb_publishable_L8j_fBWUc1hSh-G5T9vROw_Z07SlmXr”;
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let admin = false;
+let pesertaAktif = null;
+const $ = id => document.getElementById(id);
+
+function tampil(nama) {
+  ['viewLogin','viewDaftar','viewDetail'].forEach(v => $(v).classList.add('hidden'));
+  $(nama).classList.remove('hidden');
+}
+
+function atur() {
+  $('tombolLogin').textContent = admin ? 'Keluar' : 'Login Admin';
+  $('formPeserta').classList.toggle('hidden', !admin);
+  $('formCatatan').classList.toggle('hidden', !admin);
+}
+
+async function muatDaftar() {
+  const { data } = await db.from('peserta').select('*').order('nama');
+  $('daftar').innerHTML = '';
+  (data || []).forEach(p => {
+    const d = document.createElement('div');
+    d.className = 'kartu';
+    d.innerHTML = '<strong>' + p.nama + '</strong>';
+    d.style.cursor = 'pointer';
+    d.onclick = () => bukaDetail(p);
+    $('daftar').appendChild(d);
+  });
+}
+
+async function bukaDetail(p) {
+  pesertaAktif = p;
+  $('namaPeserta').textContent = p.nama;
+  $('tgl').value = new Date().toISOString().slice(0, 10);
+  tampil('viewDetail');
+  muatCatatan();
+}
+
+async function muatCatatan() {
+  const { data } = await db.from('catatan').select('*')
+    .eq('peserta_id', pesertaAktif.id).order('tanggal', { ascending: false });
+  $('daftarCatatan').innerHTML = '';
+  (data || []).forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'kartu';
+    const teks = document.createElement('div');
+    teks.innerHTML = '<strong>' + c.tanggal + '</strong><br>Tinggi: ' + (c.tinggi_badan_cm ?? '-') +
+      ' cm<br>Suhu: ' + (c.suhu_c ?? '-') + ' °C<br>';
+    const kg = document.createElement('span');
+    kg.textContent = 'Kegiatan: ' + (c.kegiatan || '-');
+    teks.appendChild(kg);
+    d.appendChild(teks);
+    if (admin) {
+      const hapus = document.createElement('button');
+      hapus.className = 'merah';
+      hapus.textContent = 'Hapus';
+      hapus.style.marginTop = '8px';
+      hapus.onclick = async () => {
+        if (confirm('Hapus catatan ini?')) {
+          await db.from('catatan').delete().eq('id', c.id);
+          muatCatatan();
+        }
+      };
+      d.appendChild(hapus);
+    }
+    $('daftarCatatan').appendChild(d);
+  });
+}
+
+$('tombolLogin').onclick = async () => {
+  if (admin) {
+    await db.auth.signOut();
+  } else {
+    tampil('viewLogin');
+  }
+};
+$('batalLogin').onclick = () => tampil('viewDaftar');
+$('kembali').onclick = () => tampil('viewDaftar');
+
+$('kirimLogin').onclick = async () => {
+  const { error } = await db.auth.signInWithPassword({
+    email: $('email').value, password: $('password').value
+  });
+  if (error) { $('pesanLogin').textContent = 'Login gagal: ' + error.message; }
+  else { $('pesanLogin').textContent = ''; tampil('viewDaftar'); }
+};
+
+$('simpanPeserta').onclick = async () => {
+  const nama = $('namaBaru').value.trim();
+  if (!nama) return;
+  await db.from('peserta').insert({ nama });
+  $('namaBaru').value = '';
+  muatDaftar();
+};
+
+$('simpanCatatan').onclick = async () => {
+  await db.from('catatan').insert({
+    peserta_id: pesertaAktif.id,
+    tanggal: $('tgl').value,
+    tinggi_badan_cm: $('tinggi').value || null,
+    suhu_c: $('suhu').value || null,
+    kegiatan: $('kegiatan').value
+  });
+  $('tinggi').value = ''; $('suhu').value = ''; $('kegiatan').value = '';
+  muatCatatan();
+};
+
+db.auth.onAuthStateChange((_event, session) => {
+  admin = !!session;
+  atur();
+  if (pesertaAktif && !$('viewDetail').classList.contains('hidden')) muatCatatan();
+});
+
+atur();
+muatDaftar();
+</script>
+</body>
+</html>
